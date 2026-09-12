@@ -1,0 +1,39 @@
+services:
+  web:
+    build: .
+    image: task3-docker-app:latest
+    ports:
+      - "5000:5000"
+    environment:
+      DB_HOST: db
+      POSTGRES_DB: task3db
+      POSTGRES_USER: task3user
+      POSTGRES_PASSWORD: task3pass
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD","python","-c","import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/health',timeout=3).read()"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: task3db
+      POSTGRES_USER: task3user
+      POSTGRES_PASSWORD: task3pass
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL","pg_isready -U task3user -d task3db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pgdata:

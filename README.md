@@ -1,16 +1,42 @@
-# Task 3 – Multi-Stage Docker Containerization & Optimization
+# Stage 1: Build dependencies
+FROM python:3.12-alpine AS builder
 
-Flask + PostgreSQL demo covering multi-stage Docker build, non-root execution,
-Docker Compose, health checks, persistent PostgreSQL volume, and CI testing.
+WORKDIR /build
 
-## Commands
-docker compose up -d --build
-docker compose ps
-curl http://localhost:5000/health
-curl -X POST http://localhost:5000/visit
-curl http://localhost:5000/visits
-docker image ls task3-docker-app
-docker compose down
+RUN python -m venv /opt/venv
 
-The named `pgdata` volume preserves database data across container restarts.
-The CI workflow performs the real image-size check (<150MB).
+ENV PATH="/opt/venv/bin:$PATH"
+
+COPY requirements.txt .
+
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir -r requirements.txt
+
+
+# Stage 2: Small production image
+FROM python:3.12-alpine
+
+WORKDIR /app
+
+# Create non-root user
+RUN addgroup -S appgroup \
+    && adduser -S appuser -G appgroup
+
+# Copy only the virtual environment
+COPY --from=builder /opt/venv /opt/venv
+
+# Copy application
+COPY app.py .
+
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Run as non-root user
+USER appuser
+
+EXPOSE 5000
+
+# Container health check
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD wget --no-verbose --tries=1 --spider http://127.0.0.1:5000/health || exit 1
+
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "app:app"]
